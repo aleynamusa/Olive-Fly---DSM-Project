@@ -19,18 +19,20 @@ parser.add_argument('--verbose', '-v', action="store_true")
 # =======================================================
 # YOUR MATHEMATICALLY OPTIMIZED NEURAL NETWORK PARAMETERS
 # =======================================================
-# Run your local script first to get these exact numbers!
-# Below are placeholder matrices; replace them with your terminal prints.
-X_MEAN = np.array([3877.4587, 1.1174, 149.3449])
-X_STD  = np.array([4801.6355, 0.5524, 51.8820])
+# These are your real parameters from cell 72 of your notebook!
+X_MEAN = np.array([3877.45872340, 1.11746390, 149.34492621])
+X_STD  = np.array([4801.63556521, 0.55243511, 51.88207313])
 
-W1 = np.array([[-0.25,  0.41, -0.12,  0.73],
-               [ 0.14, -0.32,  0.55, -0.05],
-               [ 0.62,  0.81, -0.44,  0.29]])
-B1 = np.array([0.02, -0.15, 0.31, -0.08])
+W1 = np.array([[-1.47879269,  0.95968934,  1.09317243, -1.74546277],
+               [-0.26691265, -1.81149109,  0.42032040,  0.38288509],
+               [-0.67466904,  0.17595713, -1.53510977,  1.35100705]])
+B1 = np.array([0.68760984, -0.80685428,  0.79454286, -1.15430438])
 
-W2 = np.array([[0.88], [-0.41], [0.63], [-0.19]])
-B2 = np.array([0.12])
+W2 = np.array([[-0.81486777],
+               [-0.93495785],
+               [-0.85189586],
+               [-1.67806577]])
+B2 = np.array([0.24297322])
 
 
 # =======================================================
@@ -95,7 +97,7 @@ def detect_olive_fly(image) -> bool:
         # Sigmoid activation function mapping to classification boundaries
         probability = 1 / (1 + np.exp(-np.clip(z2[0], -500, 500)))
         
-        return bool(probability >= 0.5)
+        return bool(probability >= 0.29)
         
     except Exception:
         return False
