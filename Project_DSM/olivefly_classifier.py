@@ -1,21 +1,43 @@
-import numpy as np
+import glob
+import sys
+import argparse
+import pathlib
 import cv2
+import numpy as np
 from skimage.measure import label
 
-# =======================================================
-# YOUR MATHEMATICALLY OPTIMIZED TRAINING PARAMETERS
-# =======================================================
-X_MEAN = np.array([3877.458723404255, 1.1174638977603828, 149.3449262126882])
-X_STD  = np.array([4801.635565207151, 0.5524351102376486, 51.88207312731143])
-BETA   = np.array([-1.9096005592994554, -0.10140490516913897, -0.08397068506421064, 0.34869182622872813])
+parser = argparse.ArgumentParser(
+    prog="OliveFly detection test script",
+    description="""
+        This scripts tests the olive fly detection algorithm
+        against a set of images.""")
+
+parser.add_argument('directory', help='location of the dataset',
+                    type=pathlib.Path)
+parser.add_argument('--verbose', '-v', action="store_true")
+
 
 # =======================================================
-# LIGHTWEIGHT FOREGROUND PROCESSING (Zero training math)
+# YOUR MATHEMATICALLY OPTIMIZED NEURAL NETWORK PARAMETERS
+# =======================================================
+# Run your local script first to get these exact numbers!
+# Below are placeholder matrices; replace them with your terminal prints.
+X_MEAN = np.array([3877.4587, 1.1174, 149.3449])
+X_STD  = np.array([4801.6355, 0.5524, 51.8820])
+
+W1 = np.array([[-0.25,  0.41, -0.12,  0.73],
+               [ 0.14, -0.32,  0.55, -0.05],
+               [ 0.62,  0.81, -0.44,  0.29]])
+B1 = np.array([0.02, -0.15, 0.31, -0.08])
+
+W2 = np.array([[0.88], [-0.41], [0.63], [-0.19]])
+B2 = np.array([0.12])
+
+
+# =======================================================
+# LIGHTWEIGHT FOREGROUND PROCESSING & FEATURE MATH
 # =======================================================
 def extract_foreground_mask(img, kernel_size=9):
-    """
-    Extracts the binary region of interest for the insect body.
-    """
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.uint8)
     _, img_bw = cv2.threshold(img_gray, -1, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     
@@ -30,19 +52,12 @@ def extract_foreground_mask(img, kernel_size=9):
         return np.zeros_like(img_gray)
         
     label_of_largest_region = np.argmax(np.bincount(flat_labels, weights=flat_bw))
-    largest_region = (labels == label_of_largest_region)
-    return largest_region.astype(np.uint8)
+    return (labels == label_of_largest_region).astype(np.uint8)
 
 def compute_features(image):
-    """
-    Computes rapid matrix-based shape and color traits from the image.
-    """
     mask = extract_foreground_mask(image)
-    
-    # Feature 1: Area (Total pixels)
     area = float(np.sum(mask))
     
-    # Feature 2: Aspect Ratio (Width / Height)
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if contours:
         c = max(contours, key=cv2.contourArea)
@@ -51,40 +66,82 @@ def compute_features(image):
     else:
         aspect_ratio = 1.0
         
-    # Feature 3: Color Saturation Tone inside the mask
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     saturation_channel = hsv[:, :, 1]
     mean_saturation = float(cv2.mean(saturation_channel, mask=mask)[0])
     
     return np.array([area, aspect_ratio, mean_saturation])
 
+
 # =======================================================
-# REQUIRED ASSIGNMENT PROTOTYPE FUNCTION
+# REQUIRED ASSIGNMENT PROTOTYPE FUNCTION (NEURAL NETWORK)
 # =======================================================
 def detect_olive_fly(image) -> bool:
     """
-    Correctly classifies olive flies with the least amount of energy.
-    Runs headless and efficiently on a Raspberry Pi 4.
+    Classifies olive flies using an ultra-lightweight Neural Network forward pass.
+    Aligns with curriculum matrix guidelines for zero-overhead edge deployment.
     """
     try:
-        # 1. Extract physical attributes from the image matrix
+        # 1. Extract and standardize physical attributes
         raw_features = compute_features(image)
-        
-        # 2. Scale features instantly using dataset parameters to prevent numerical bias
         scaled_features = (raw_features - X_MEAN) / X_STD
         
-        # 3. Add an intercept/bias coordinate (Stacking a 1 at the front)
-        X_final = np.insert(scaled_features, 0, 1)
+        # 2. Hidden Layer Propagation: Z1 = A1*W1 + B1
+        z1 = np.dot(scaled_features, W1) + B1
+        a2 = np.maximum(0, z1)  # ReLU non-linear activation function
         
-        # 4. Perform the dot-product matrix multiplication (Logistic Regression)
-        z = np.dot(X_final, BETA)
+        # 3. Output Layer Propagation: Z2 = A2*W2 + B2
+        z2 = np.dot(a2, W2) + B2
         
-        # Sigmoid probability computation (Clipped to protect against math overflow)
-        probability = 1 / (1 + np.exp(-np.clip(z, -500, 500)))
+        # Sigmoid activation function mapping to classification boundaries
+        probability = 1 / (1 + np.exp(-np.clip(z2[0], -500, 500)))
         
-        # 5. Return True if probability satisfies or exceeds the 50% threshold
         return bool(probability >= 0.5)
         
     except Exception:
-        # Defensive programming: fallback choice if image matrix is malformed
         return False
+
+
+# =======================================================
+# AUTOMATED EVALUATION TRACKER
+# =======================================================
+def main():
+    args = parser.parse_args()
+    
+    TP, TN, FP, FN = 0, 0, 0, 0
+    
+    for filename in glob.glob(str(args.directory)+"/**/*.JPG", recursive=True):
+        img = cv2.imread(filename)
+        if "not_olive_fly" in filename:
+            olive_fly = False
+        elif "olive_fly" in filename:
+            olive_fly = True
+        else:
+            print(f"{filename} not labeled.")
+            continue
+
+        detection_result = detect_olive_fly(img)
+
+        if olive_fly and detection_result:
+            TP += 1
+        elif olive_fly and not detection_result:
+            FN += 1
+        elif not olive_fly and detection_result:
+            FP += 1
+        else:
+            TN += 1
+            
+        if args.verbose:    
+            if detect_olive_fly(img):
+                print(f"{filename} contains an olive fly.")
+            else:
+                print(f"{filename} does not contain an olive fly.")
+                
+    print(f"TP: {TP}, TN: {TN}, FP: {FP}, FN: {FN}")
+    if (TP + FP) > 0 and (TP + FN) > 0:
+        precision = TP / (TP + FP)
+        recall = TP / (TP + FN)
+        print(f"Precision: {precision:.4f}, Recall: {recall:.4f}")
+
+if __name__ == "__main__":
+    main()
