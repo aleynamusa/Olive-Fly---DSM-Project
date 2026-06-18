@@ -1,5 +1,4 @@
 import glob
-import sys
 import argparse
 import pathlib
 import cv2
